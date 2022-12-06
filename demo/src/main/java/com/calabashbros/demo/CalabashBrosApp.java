@@ -6,24 +6,24 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 
-import javax.net.ssl.SSLProtocolException;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 public class CalabashBrosApp extends Application {
     private double t;
     private Pane root=new Pane();
-    private Sprite player=new Sprite(300,750,40,40,"player",Color.BLUE);
+    private Player player=new Player(300,750,40,40,"player",Color.BLUE);
     private Parent createContent(){
         root.setPrefSize(600,800);
-        root.getChildren().add(player);
+        Instantiate(player);
         AnimationTimer timer = new AnimationTimer() {
             @Override
             public void handle(long l) {
-                update();
+                CollisionDetect();
+                ClearDead();
             }
         };
         timer.start();
@@ -32,59 +32,38 @@ public class CalabashBrosApp extends Application {
     }
     private void nextLevel(){
         for(int i=0;i<5;++i){
-            Sprite enemy=new Sprite(90+i*100,150,30,30,"enemy",Color.RED);
-            root.getChildren().add(enemy);
+            Enemy enemy=new Enemy(90+i*100,-10,Color.RED);
+            Instantiate(enemy);
         }
     }
     private List<Sprite> sprites(){
         return root.getChildren().stream().map(n->(Sprite)n).collect(Collectors.toList());
     }
-    private void update(){
-        t+=0.08;
+    private void CollisionDetect(){
         sprites().forEach(s->{
-            switch (s.type){
-                case "enemy-bullet"->{
-                    s.moveDown(Data.BULLET_SPEED);
-                    if(!player.dead && s.getBoundsInParent().intersects(player.getBoundsInParent())){
-                        player.dead=true;
-                        s.dead=true;
-                    }
+            sprites().forEach(b->{
+                if(s!=b){
+                    if(s.getBoundsInParent().intersects(b.getBoundsInParent()))
+                        s.OnCollision(b);
                 }
-                case "player-bullet"->{
-                    s.moveUp(Data.BULLET_SPEED);
-                    sprites().stream().filter(e->e.type.equals("enemy")).forEach(enemy->{
-                        if(s.getBoundsInParent().intersects(enemy.getBoundsInParent())){
-                            enemy.dead=true;
-                            s.dead=true;
-                        }
-                    });
-                }
-                case "enemy"->{
-                    if (t > 2) {
-                        if(Math.random()<0.05){
-                            shoot(s);
-                        }
-                    }
-                }
-            }
+            });
         });
-
-        root.getChildren().removeIf(n->{
-            Sprite s = (Sprite) n;
-            if(s.dead){
-                System.out.println("removed "+s.type);
-            }
-            return s.dead;
-        });
-        if(t>2){
-            t=0;
-        }
     }
-    private void shoot(Sprite shooter){
-        Sprite bullet=new Sprite((int) (shooter.getTranslateX()+20),
-                (int) shooter.getTranslateY(),
-                5,20,shooter.type+"-bullet",Color.BLACK);
-        root.getChildren().add(bullet);
+    private void ClearDead(){
+        sprites().forEach(s->{
+            if(s.dead)
+                Destroy(s);
+        });
+    }
+    private void Instantiate(Sprite s){
+        root.getChildren().add(s);
+        s.Activate();
+    }
+    private void Destroy(Sprite s){
+        s.dead=true;
+        s.DeActivate();
+        s.OnDestroy();
+        root.getChildren().remove(s);
     }
     @Override
     public void start(Stage stage) throws Exception {
@@ -95,37 +74,65 @@ public class CalabashBrosApp extends Application {
                 case DOWN -> {player.moveDown(Data.PLAYER_SPEED);}
                 case LEFT -> {player.moveLeft(Data.PLAYER_SPEED);}
                 case RIGHT -> {player.moveRight(Data.PLAYER_SPEED);}
-                case SPACE -> {shoot(player);}
+                case SPACE -> {Instantiate(new Bullet((int) player.getTranslateX(), (int) player.getTranslateY(),Color.BLACK));}
             }
         });
         stage.setScene(scene);
         stage.show();
     }
 
-    private static class Sprite extends Rectangle{
-        boolean dead=false;
-        final String type;
-        Sprite(int x,int y,int w,int h,String type, Color color){
-            super(w,h,color);
-            this.type=type;
-            setTranslateX(x);
-            setTranslateY(y);
-        }
-        void moveLeft(float speed){
-            setTranslateX(getTranslateX() - speed);
-        }
-        void moveRight(float speed){
-            setTranslateX(getTranslateX() + speed);
-        }
-        void moveUp(float speed){
-            setTranslateY(getTranslateY() - speed);
-        }
-        void moveDown(float speed){
-            setTranslateY(getTranslateY() + speed);
-        }
-    }
-
     public static void main(String[] args) {
         launch(args);
     }
 }
+class Player extends Sprite{
+
+    Player(int x, int y, int w, int h, String type, Color color) {
+        super(x, y, w, h, type, color);
+    }
+
+    @Override
+    public void Update() {
+        System.out.println("player is alive");
+    }
+    @Override
+    public void OnCollision(Sprite Other){
+        if(Other.type=="enemy")
+            Die();
+    }
+}
+class Enemy extends Sprite{
+
+    Enemy(int x, int y, Color color) {
+        super(x, y, 40, 40, "enemy", color);
+    }
+    @Override
+    public void Update(){
+        if(Math.random()<0.5){
+            moveDown(1);
+        }
+    }
+    @Override
+    public void OnCollision(Sprite Other){
+        if(Other.type=="bullet")
+            Die();
+    }
+}
+class Bullet extends Sprite{
+
+    Bullet(int x, int y, Color color) {
+        super(x, y, 5, 5, "bullet", color);
+    }
+    @Override
+    public void Update(){
+        moveUp(5);
+        if(getTranslateY()<0)
+            Die();
+    }
+    @Override
+    public void OnCollision(Sprite Other){
+        if(Other.type=="enemy")
+            Die();
+    }
+}
+
